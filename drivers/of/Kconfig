@@ -11,6 +11,14 @@ menuconfig OF
 
 if OF
 
+config OF_DEBUG
+	bool "Debug support of device tree and open firmware drivers"
+        depends on DEBUG_KERNEL
+        help
+          Say "yes" to enable debug messaging (like dev_dbg and pr_debug),
+          sysfs, and debugfs support.
+
+
 config OF_UNITTEST
 	bool "Device Tree runtime unit tests"
 	depends on OF_IRQ
@@ -108,6 +116,13 @@ config OF_OVERLAY
 	  device tree with dynamically loaded data.
 	  While this option is selected automatically when needed, you can
 	  enable it manually to improve device tree unit test coverage.
+
+config OF_CONFIGFS
+	bool "Device Tree Overlay ConfigFS interface"
+	select CONFIGFS_FS
+	depends on OF_OVERLAY
+	help
+	  Enable a simple user-space driver DT overlay interface.
 
 config OF_NUMA
 	bool

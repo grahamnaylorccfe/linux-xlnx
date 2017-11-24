@@ -784,6 +784,11 @@ config XILINX_VCU
        help
           Driver for the Xilinx VCU Init based on the logicoreIP.
 
+config KRTKL_LISTENER
+	tristate "Krtkl ASCII Listener"
+	help
+	  This option enabled the driver to the Krtkl Listener IP core.
+
 source "drivers/misc/jesd204b/Kconfig"
 source "drivers/misc/c2port/Kconfig"
 source "drivers/misc/eeprom/Kconfig"
