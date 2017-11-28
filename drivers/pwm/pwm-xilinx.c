@@ -338,3 +338,4 @@ module_platform_driver(xilinx_pwm_driver);
 MODULE_AUTHOR("krtkl inc.");
 MODULE_DESCRIPTION("Xilinx PWM driver");
 MODULE_LICENSE("GPL v2.0");
+

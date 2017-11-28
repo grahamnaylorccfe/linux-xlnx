@@ -17,3 +17,4 @@ Example:
         reg = <0x42800000 0x10000>;
         interrupt-parent = <&intc>;
     };
+

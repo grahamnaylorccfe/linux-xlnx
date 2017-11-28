@@ -483,5 +483,5 @@ config PWM_XLNX
 
 	  To compile this driver as a module, choose M here: the module
 	  will be called pwm-xlnx.
-	  
+
 endif
