@@ -242,6 +242,11 @@
 #define XST352_BYTE3_ACT_LUMA_COUNT_MASK	BIT(22)
 #define XST352_BYTE3_ACT_LUMA_COUNT_OFFSET	22
 
+#define XST352_BYTE3_COLOR_FORMAT_MASK		GENMASK(19, 16)
+#define XST352_BYTE3_COLOR_FORMAT_OFFSET	16
+#define XST352_BYTE3_COLOR_FORMAT_422		0x0
+#define XST352_BYTE3_COLOR_FORMAT_420		0x3
+
 /**
  * enum sdi_family_enc - SDI Transport Video Format Detected with Active Pixels
  * @XSDIRX_SMPTE_ST_274: SMPTE ST 274 detected with AP 1920x1080
@@ -590,6 +595,7 @@ static int xsdirx_get_stream_properties(struct xsdirxss_state *state)
 	struct xsdirxss_core *core = &state->core;
 	u32 mode, payload = 0, val, family, valid, tscan;
 	u8 byte1 = 0, active_luma = 0, pic_type = 0, framerate = 0;
+	u8 sampling = XST352_BYTE3_COLOR_FORMAT_422;
 	struct v4l2_mbus_framefmt *format = &state->formats[0];
 
 	mode = xsdirxss_read(core, XSDIRX_MODE_DET_STAT_REG);
@@ -615,6 +621,8 @@ static int xsdirx_get_stream_properties(struct xsdirxss_state *state)
 				XST352_BYTE2_FPS_MASK;
 		tscan = (payload & XST352_BYTE2_TS_TYPE_MASK) >>
 				XST352_BYTE2_TS_TYPE_OFFSET;
+		sampling = (payload & XST352_BYTE3_COLOR_FORMAT_MASK) >>
+			   XST352_BYTE3_COLOR_FORMAT_OFFSET;
 	} else {
 		dev_dbg(core->dev, "No ST352 payload available : Mode = %d\n",
 			mode);
@@ -661,7 +669,7 @@ static int xsdirx_get_stream_properties(struct xsdirxss_state *state)
 						format->field = V4L2_FIELD_NONE;
 					else
 						format->field =
-							V4L2_FIELD_INTERLACED;
+							V4L2_FIELD_ALTERNATE;
 				} else {
 					format->width = 1920;
 					format->height = 1080;
@@ -669,7 +677,7 @@ static int xsdirx_get_stream_properties(struct xsdirxss_state *state)
 						format->field = V4L2_FIELD_NONE;
 					else
 						format->field =
-							V4L2_FIELD_INTERLACED;
+							V4L2_FIELD_ALTERNATE;
 				}
 				break;
 			case XSDIRX_TS_DET_STAT_RATE_50HZ:
@@ -712,7 +720,7 @@ static int xsdirx_get_stream_properties(struct xsdirxss_state *state)
 		}
 		break;
 	case XSDIRX_MODE_SD_MASK:
-		format->field = V4L2_FIELD_INTERLACED;
+		format->field = V4L2_FIELD_ALTERNATE;
 
 		switch (family) {
 		case XSDIRX_NTSC:
@@ -796,7 +804,22 @@ static int xsdirx_get_stream_properties(struct xsdirxss_state *state)
 		if (pic_type)
 			format->field = V4L2_FIELD_NONE;
 		else
-			format->field = V4L2_FIELD_INTERLACED;
+			format->field = V4L2_FIELD_ALTERNATE;
+	}
+
+	if (format->field == V4L2_FIELD_ALTERNATE)
+		format->height = format->height / 2;
+
+	switch (sampling) {
+	case XST352_BYTE3_COLOR_FORMAT_420:
+		format->code = MEDIA_BUS_FMT_VYYUYY8_1X24;
+		break;
+	case XST352_BYTE3_COLOR_FORMAT_422:
+		format->code = MEDIA_BUS_FMT_UYVY8_1X16;
+		break;
+	default:
+		dev_err(core->dev, "Unsupported color format : %d\n", sampling);
+		return -EINVAL;
 	}
 
 	xsdirxss_get_framerate(&state->frame_interval, framerate);
@@ -806,6 +829,7 @@ static int xsdirx_get_stream_properties(struct xsdirxss_state *state)
 	dev_dbg(core->dev, "frame rate numerator = %d denominator = %d\n",
 		state->frame_interval.numerator,
 		state->frame_interval.denominator);
+	dev_dbg(core->dev, "Stream code = 0x%x\n", format->code);
 	return 0;
 }
 
@@ -1560,8 +1584,9 @@ static int xsdirxss_parse_of(struct xsdirxss_state *xsdirxss)
 		dev_dbg(core->dev, "vf_code = %d bpc = %d bpp = %d\n",
 			format->vf_code, format->width, format->bpp);
 
-		if (format->vf_code != XVIP_VF_YUV_422) {
-			dev_err(core->dev, "Incorrect UG934 video format set. Accepts only YUV422\n");
+		if (format->vf_code != XVIP_VF_YUV_422 &&
+		    format->vf_code != XVIP_VF_YUV_420) {
+			dev_err(core->dev, "Incorrect UG934 video format set.\n");
 			return -EINVAL;
 		}
 		xsdirxss->vip_format = format;

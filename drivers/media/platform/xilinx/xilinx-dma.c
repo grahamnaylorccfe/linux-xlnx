@@ -498,6 +498,7 @@ static void xvip_dma_buffer_queue(struct vb2_buffer *vb)
 		struct v4l2_pix_format *pix;
 
 		pix = &dma->format.fmt.pix;
+		xilinx_xdma_v4l2_config(dma->dma, pix->pixelformat);
 		xvip_width_padding_factor(pix->pixelformat,
 					  &padding_factor_nume,
 					  &padding_factor_deno);
@@ -509,7 +510,7 @@ static void xvip_dma_buffer_queue(struct vb2_buffer *vb)
 				    (padding_factor_deno * bpl_deno);
 		dma->sgl[0].icg = pix->bytesperline - dma->sgl[0].size;
 		dma->xt.numf = pix->height;
-		dma->sgl[0].dst_icg = dma->sgl[0].size;
+		dma->sgl[0].dst_icg = 0;
 	}
 
 	desc = dmaengine_prep_interleaved_dma(dma->dma, &dma->xt, flags);
@@ -733,6 +734,8 @@ xvip_dma_enum_format(struct file *file, void *fh, struct v4l2_fmtdesc *f)
 		f->pixelformat = fmt->fourcc;
 		strlcpy(f->description, fmt->description,
 			sizeof(f->description));
+
+		return 0;
 	}
 
 	/* Single plane formats */
@@ -804,8 +807,10 @@ __xvip_dma_try_format(struct xvip_dma *dma,
 
 	if (V4L2_TYPE_IS_MULTIPLANAR(dma->format.type)) {
 		struct v4l2_pix_format_mplane *pix_mp;
+		struct v4l2_plane_pix_format *plane_fmt;
 
 		pix_mp = &format->fmt.pix_mp;
+		plane_fmt = pix_mp->plane_fmt;
 		pix_mp->field = V4L2_FIELD_NONE;
 		width = rounddown(pix_mp->width * info->bpl_factor, align);
 		pix_mp->width = clamp(width, min_width, max_width) /
@@ -820,16 +825,30 @@ __xvip_dma_try_format(struct xvip_dma *dma,
 		 * with the minimum in that case.
 		 */
 
+		max_bpl = rounddown(XVIP_DMA_MAX_WIDTH, dma->align);
+
 		/* Handling contiguous data with mplanes */
 		if (info->buffers == 1) {
-			min_bpl = pix_mp->width * info->bpl_factor;
-			max_bpl = rounddown(XVIP_DMA_MAX_WIDTH, dma->align);
-			bpl = rounddown(pix_mp->plane_fmt[0].bytesperline,
-					dma->align);
-			pix_mp->plane_fmt[0].bytesperline = clamp(bpl, min_bpl,
-								  max_bpl);
-			pix_mp->plane_fmt[0].sizeimage =
-			      pix_mp->width * pix_mp->height * info->bpp / 8;
+			min_bpl = (pix_mp->width * info->bpl_factor *
+				   padding_factor_nume * bpl_nume) /
+				   (padding_factor_deno * bpl_deno);
+			min_bpl = roundup(min_bpl, dma->align);
+			bpl = roundup(plane_fmt[0].bytesperline, dma->align);
+			plane_fmt[0].bytesperline = clamp(bpl, min_bpl,
+							  max_bpl);
+
+			if (info->num_planes == 1) {
+				/* Single plane formats */
+				plane_fmt[0].sizeimage =
+						plane_fmt[0].bytesperline *
+						pix_mp->height;
+			} else {
+				/* Multi plane formats */
+				plane_fmt[0].sizeimage =
+					DIV_ROUND_UP(plane_fmt[0].bytesperline *
+						     pix_mp->height *
+						     info->bpp, 8);
+			}
 		} else {
 			/* Handling non-contiguous data with mplanes */
 			hsub = info->hsub;
@@ -840,15 +859,14 @@ __xvip_dma_try_format(struct xvip_dma *dma,
 				min_bpl = (plane_width * info->bpl_factor *
 					   padding_factor_nume * bpl_nume) /
 					   (padding_factor_deno * bpl_deno);
-				max_bpl = rounddown(XVIP_DMA_MAX_WIDTH,
-						    dma->align);
-				bpl = pix_mp->plane_fmt[i].bytesperline;
-				bpl = rounddown(bpl, dma->align);
-				pix_mp->plane_fmt[i].bytesperline =
+				min_bpl = roundup(min_bpl, dma->align);
+				bpl = rounddown(plane_fmt[i].bytesperline,
+						dma->align);
+				plane_fmt[i].bytesperline =
 						clamp(bpl, min_bpl, max_bpl);
-				pix_mp->plane_fmt[i].sizeimage =
-					pix_mp->plane_fmt[i].bytesperline *
-								plane_height;
+				plane_fmt[i].sizeimage =
+						plane_fmt[i].bytesperline *
+						plane_height;
 			}
 		}
 	} else {
@@ -863,7 +881,10 @@ __xvip_dma_try_format(struct xvip_dma *dma,
 		pix->height = clamp(pix->height, XVIP_DMA_MIN_HEIGHT,
 				    XVIP_DMA_MAX_HEIGHT);
 
-		min_bpl = pix->width * info->bpl_factor;
+		min_bpl = (pix->width * info->bpl_factor *
+			  padding_factor_nume * bpl_nume) /
+			  (padding_factor_deno * bpl_deno);
+		min_bpl = roundup(min_bpl, dma->align);
 		max_bpl = rounddown(XVIP_DMA_MAX_WIDTH, dma->align);
 		bpl = rounddown(pix->bytesperline, dma->align);
 		pix->bytesperline = clamp(bpl, min_bpl, max_bpl);

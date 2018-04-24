@@ -1,8 +1,8 @@
-// SPDX-License-Identifier: GPL-2.0+
+// SPDX-License-Identifier: GPL-2.0
 /*
- * dts file for Xilinx ZynqMP ZC1254
+ * dts file for Xilinx ZynqMP ZC1275 RevB
  *
- * (C) Copyright 2015 - 2018, Xilinx, Inc.
+ * (C) Copyright 2018, Xilinx, Inc.
  *
  * Michal Simek <michal.simek@xilinx.com>
  * Siva Durga Prasad Paladugu <sivadur@xilinx.com>
@@ -14,13 +14,14 @@
 #include "zynqmp-clk-ccf.dtsi"
 
 / {
-	model = "ZynqMP ZC1254 RevA";
-	compatible = "xlnx,zynqmp-zc1254-revA", "xlnx,zynqmp-zc1254", "xlnx,zynqmp";
+	model = "ZynqMP ZC1275 RevB";
+	compatible = "xlnx,zynqmp-zc1275-revB", "xlnx,zynqmp-zc1275", "xlnx,zynqmp";
 
 	aliases {
 		serial0 = &uart0;
 		serial1 = &dcc;
 		spi0 = &qspi;
+		mmc0 = &sdhci1;
 	};
 
 	chosen {
@@ -46,7 +47,7 @@
 		#size-cells = <1>;
 		reg = <0x0>;
 		spi-tx-bus-width = <1>;
-		spi-rx-bus-width = <4>; /* FIXME also DUAL configuration possible */
+		spi-rx-bus-width = <4>;
 		spi-max-frequency = <108000000>; /* Based on DC1 spec */
 		partition@qspi-fsbl-uboot { /* for testing purpose */
 			label = "qspi-fsbl-uboot";
@@ -69,4 +70,10 @@
 
 &uart0 {
 	status = "okay";
+};
+
+&sdhci1 {
+	status = "okay";
+	no-1-8-v;
+	xlnx,mio_bank = <1>;
 };
