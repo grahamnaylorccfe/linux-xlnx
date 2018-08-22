@@ -163,6 +163,7 @@
 /* AXI DMA Specific Masks/Bit fields */
 #define XILINX_DMA_MAX_TRANS_LEN_MIN	8
 #define XILINX_DMA_MAX_TRANS_LEN_MAX	23
+#define XILINX_DMA_V2_MAX_TRANS_LEN_MAX	26
 #define XILINX_DMA_CR_COALESCE_MAX	GENMASK(23, 16)
 #define XILINX_DMA_CR_CYCLIC_BD_EN_MASK	BIT(4)
 #define XILINX_DMA_CR_COALESCE_SHIFT	16
@@ -382,6 +383,20 @@ struct xilinx_dma_chan {
 	int (*stop_transfer)(struct xilinx_dma_chan *chan);
 	u16 tdest;
 	bool has_vflip;
+};
+
+/**
+ * enum xdma_ip_type - DMA IP type.
+ *
+ * @XDMA_TYPE_AXIDMA: Axi dma ip.
+ * @XDMA_TYPE_CDMA: Axi cdma ip.
+ * @XDMA_TYPE_VDMA: Axi vdma ip.
+ *
+ */
+enum xdma_ip_type {
+	XDMA_TYPE_AXIDMA = 0,
+	XDMA_TYPE_CDMA,
+	XDMA_TYPE_VDMA,
 };
 
 struct xilinx_dma_config {
@@ -1234,8 +1249,10 @@ static void xilinx_cdma_start_transfer(struct xilinx_dma_chan *chan)
 
 		hw = &segment->hw;
 
-		xilinx_write(chan, XILINX_CDMA_REG_SRCADDR, hw->src_addr);
-		xilinx_write(chan, XILINX_CDMA_REG_DSTADDR, hw->dest_addr);
+		xilinx_write(chan, XILINX_CDMA_REG_SRCADDR, (dma_addr_t)
+			     ((u64)hw->src_addr_msb << 32 | hw->src_addr));
+		xilinx_write(chan, XILINX_CDMA_REG_DSTADDR, (dma_addr_t)
+			     ((u64)hw->dest_addr_msb << 32 | hw->dest_addr));
 
 		/* Start the transfer */
 		dma_ctrl_write(chan, XILINX_DMA_REG_BTT,
@@ -2487,9 +2504,9 @@ static int xilinx_dma_chan_probe(struct xilinx_dma_device *xdev,
 	chan->has_sg = xdev->has_sg;
 	chan->desc_pendingcount = 0x0;
 	chan->ext_addr = xdev->ext_addr;
-	/* This variable enusres that descripotrs are not
-	 * Submited when dma engine is in progress. This variable is
-	 * Added to avoid pollling for a bit in the status register to
+	/* This variable ensures that descriptors are not
+	 * Submitted when dma engine is in progress. This variable is
+	 * Added to avoid polling for a bit in the status register to
 	 * Know dma state in the driver hot path.
 	 */
 	chan->idle = true;
@@ -2732,12 +2749,14 @@ static int xilinx_dma_probe(struct platform_device *pdev)
 		if (!of_property_read_u32(node, "xlnx,sg-length-width",
 					  &len_width)) {
 			if (len_width < XILINX_DMA_MAX_TRANS_LEN_MIN ||
-			    len_width > XILINX_DMA_MAX_TRANS_LEN_MAX) {
+			    len_width > XILINX_DMA_V2_MAX_TRANS_LEN_MAX) {
 				dev_warn(xdev->dev,
 					 "invalid xlnx,sg-length-width property value using default width\n");
 			} else {
-				xdev->max_buffer_len = GENMASK(len_width - 1,
-							       0);
+				if (len_width > XILINX_DMA_MAX_TRANS_LEN_MAX)
+					dev_warn(xdev->dev, "Please ensure that IP supports buffer length > 23 bits\n");
+
+				xdev->max_buffer_len = GENMASK(len_width - 1, 0);
 			}
 		}
 	}
